@@ -7,37 +7,38 @@ import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.TopDocs;
 
 /**
- * <strong>experimental</strong>: TODO: this is just a quick-and-dirty implementation of a {@link ReadResponse} to get started.
+ * An instance of this class can be provided to methods to search the Lucene
+ * index. Such method will store the result via the available setters.
+ * Afterwards you can retrieve the results via the getter methods.
  */
 @SuppressWarnings({ "javadoc", "null" })
 public class PojoReadResponse implements ReadResponse {
-	private int actualHitCount = -1;
 	private TopDocs hits;
 	private Facets facets;
-	private Explanation[] explanations;
-	private int actualExplanationCount;
-	private int actualDocumentCount;
+	/**
+	 * Initial value not set to <code>null</code> but an empty array, to have a
+	 * valid return in case no explanations are added.
+	 */
+	private Explanation[] explanations = new Explanation[0];
+	private int actualExplanationCount = 0;
+	private int actualDocumentCount = 0;
+	/**
+	 * Initial value not set to <code>null</code> but an empty array, to have a
+	 * valid return in case no documents are added.
+	 */
 	private Document[] documents = new Document[0];
 
 	public Explanation[] getExplanations() {
 		return this.explanations;
 	}
 
-	public int getActualDocumentCount() {
-		return this.actualDocumentCount;
-	}
-
 	@Override
-	public void setActualDocumentCount(int actualDocumentCount) {
+	public void setActualDocumentCount(final int actualDocumentCount) {
 		this.actualDocumentCount = actualDocumentCount;
 	}
 
 	public Document[] getDocuments() {
 		return this.documents;
-	}
-
-	public int getActualHitCount() {
-		return this.actualHitCount;
 	}
 
 	public TopDocs getHits() {
@@ -49,33 +50,37 @@ public class PojoReadResponse implements ReadResponse {
 	}
 
 	@Override
-	public void setHits(TopDocs hits) {
+	public void setHits(final TopDocs hits) {
 		this.hits = hits;
 	}
 
 	@Override
-	public void setFacets(Facets facets) {
+	public void setFacets(final Facets facets) {
 		this.facets = facets;
 	}
 
 	@Override
 	public void addExplanation(final ScoreDoc scoreDoc, final Explanation explanation, final int index) {
-		if (this.explanations == null) {
+		if (isEmpty(this.explanations)) {
 			this.explanations = new Explanation[this.actualExplanationCount];
 		}
 		this.explanations[index] = explanation;
 	}
 
 	@Override
-	public void addDocument(ScoreDoc scoreDoc, Document document, final int index) {
-		if (this.documents.length == 0) {
+	public void addDocument(final ScoreDoc scoreDoc, final Document document, final int index) {
+		if (isEmpty(this.documents)) {
 			this.documents = new Document[this.actualDocumentCount];
 		}
 		this.documents[index] = document;
 	}
 
 	@Override
-	public void setActualExplanationCount(int count) {
+	public void setActualExplanationCount(final int count) {
 		this.actualExplanationCount = count;
+	}
+
+	private static <T> boolean isEmpty(final T[] array) {
+		return array.length == 0;
 	}
 }

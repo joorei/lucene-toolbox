@@ -1,5 +1,6 @@
 package org.codeturnery.lucene.query;
 
+import java.util.Collection;
 import java.util.Map;
 import java.util.Map.Entry;
 import org.apache.lucene.analysis.Analyzer;
@@ -27,7 +28,7 @@ public class QueryFactory {
 	 * term.
 	 * <p>
 	 * <strong>Warning:</strong> the built query may be heavy on performance, the
-	 * more {@link DemotedTerm}s are used.
+	 * more {@link WeightedTerm}s are used.
 	 * <p>
 	 * The given query will be boosted solely by the (multiplied) values given with
 	 * the terms and <strong>not</strong> based on other factors like the term
@@ -41,21 +42,28 @@ public class QueryFactory {
 	 */
 	// TODO: what about FunctionScoreQuery.boostByValue(userQuery,
 	// DoubleValuesSource.fromQuery(demoteQueryMultiplier));
-	public Query createDemotedQuery(final Query inputQuery, Iterable<DemotedTerm> terms) {
-		Query demoteQueryMultiplier = inputQuery;
-		for (final DemotedTerm term : terms) {
-			final var demoteQuery = new TermQuery(term.getTerm());
+	public Query createWeightedQuery(final Query inputQuery, Iterable<WeightedTerm> terms) {
+		Query resultingQuery = inputQuery;
+		for (final WeightedTerm weightedTerm : terms) {
+			final var queryToWeight = new TermQuery(weightedTerm.term());
 			/*
 			 * the same as wrapping the TermQuery first in a ConstantScoreQuery and then in
 			 * a BoostQuery before using
 			 * FunctionScoreQuery.boostByValue(demoteQueryMultiplier,
 			 * DoubleValuesSource.fromQuery(demoteQuery)) on the result
 			 */
-			demoteQueryMultiplier = FunctionScoreQuery.boostByQuery(demoteQueryMultiplier, demoteQuery,
-					term.getMultiplier());
+			resultingQuery = FunctionScoreQuery.boostByQuery(resultingQuery, queryToWeight,
+					weightedTerm.multiplier());
 		}
 
-		return demoteQueryMultiplier;
+		return resultingQuery;
+	}
+
+	public Query createWeightedQuery(final Query inputQuery, Collection<WeightedTerm> terms) {
+		if (terms.isEmpty()) {
+			return inputQuery;
+		}
+		return createWeightedQuery(inputQuery, (Iterable<WeightedTerm>) terms);
 	}
 
 	/**
@@ -73,6 +81,13 @@ public class QueryFactory {
 			b.add(new TermQuery(term), Occur.MUST_NOT);
 		}
 		return b.build();
+	}
+	
+	public Query createFilteredQuery(final Query inputQuery, final Collection<Term> mustNotEntries) {
+		if (mustNotEntries.isEmpty()) {
+			return inputQuery;
+		}
+		return createFilteredQuery(inputQuery, (Iterable<Term>) mustNotEntries);
 	}
 
 	/**
@@ -189,12 +204,22 @@ public class QueryFactory {
 		return b.build();
 	}
 
+	public Query createMandatoryQuery(final Query baseQuery, final Collection<Term> mandatoryTerms) {
+		if (mandatoryTerms.isEmpty()) {
+			return baseQuery;
+		}
+		return createMandatoryQuery(baseQuery, (Iterable<Term>) mandatoryTerms);
+	}
+
 	/**
 	 * The returned query will match documents that match the given base query and all queries generated from the given {@link TermConjunction}s.
-	 * For each {@link TermConjunction} a query will generated that will match a document if either all terms are present
+	 * For each {@link TermConjunction} a query will be generated that will match a document if either all terms are present
 	 * (AND) or if at least one term is present (OR), depending on the settings in the {@link TermConjunction}.
 	 */
 	public Query createMandatoryQuery(final Query baseQuery, final Map<String, TermConjunction> mandatoryTerms) {
+		if (mandatoryTerms.isEmpty()) {
+			return baseQuery;
+		}
 		final var b = new BooleanQuery.Builder();
 		b.add(baseQuery, Occur.MUST);
 		for (final Entry<String, TermConjunction> entry : mandatoryTerms.entrySet()) {

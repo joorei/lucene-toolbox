@@ -37,7 +37,8 @@ public class TestIndex {
 		Files.createDirectories(this.indexPath);
 		Files.createDirectories(this.taxonomyPath);
 
-		try (final var analyzerSupplier = getAnalyzerSupplier(); final var luceneIndex = getIndexManager();) {
+		try (final var analyzerSupplier = getAnalyzerSupplier();
+				final var luceneIndex = getIndexManager();) {
 			final var writeToolbox = new WriteToolbox(luceneIndex.getWriteExecuter(analyzerSupplier.get()));
 			for (final var entry : getFixtures()) {
 				writeToolbox.accept(entry);
@@ -74,9 +75,7 @@ public class TestIndex {
 	}
 
 	static <T extends Closeable & Supplier<Analyzer>> T getAnalyzerSupplier() {
-		final var keywordFields = new ArrayList<String>(2);
-		keywordFields.add(CATEGORY_DIMENSION);
-		keywordFields.add(NAME_DIMENSION);
+		final var keywordFields = Arrays.asList(CATEGORY_DIMENSION, NAME_DIMENSION);
 		return (T) new PerFieldAnalyzerSupplier(keywordFields);
 	}
 

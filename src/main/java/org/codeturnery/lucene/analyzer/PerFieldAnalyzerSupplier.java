@@ -14,26 +14,34 @@ import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.util.IOUtils;
 
 public class PerFieldAnalyzerSupplier implements Supplier<Analyzer>, Closeable {
+	private final Closeable[] closeables;
 	private final PerFieldAnalyzerWrapper analyzer;
-	private final KeywordAnalyzer keywordAnalyzer;
-	private final StandardAnalyzer standardAnalyzer;
 
+	/**
+	 * Uses a {@link StandardAnalyzer} as default and a {@link KeywordAnalyzer} for
+	 * each provided <code>keywordField</code>.
+	 * 
+	 * @param keywordFields
+	 */
+	@SuppressWarnings("resource")
 	public PerFieldAnalyzerSupplier(Collection<String> keywordFields) {
-		this.keywordAnalyzer = new KeywordAnalyzer();
-		this.standardAnalyzer = new StandardAnalyzer();
+		final var keywordAnalyzer = new KeywordAnalyzer();
+		final var standardAnalyzer = new StandardAnalyzer();
 		final var analyzerFields = new HashMap<String, Analyzer>(keywordFields.size());
-		addAll(keywordFields, this.keywordAnalyzer, analyzerFields);
-		this.analyzer = new PerFieldAnalyzerWrapper(this.standardAnalyzer, analyzerFields);
+		addAll(keywordFields, keywordAnalyzer, analyzerFields);
+		this.analyzer = new PerFieldAnalyzerWrapper(standardAnalyzer, analyzerFields);
+
+		this.closeables = new Closeable[] {this.analyzer, keywordAnalyzer, standardAnalyzer };
 	}
 
 	@Override
 	public Analyzer get() {
 		return this.analyzer;
 	}
-	
+
 	@Override
 	public void close() throws IOException {
-		IOUtils.close(this.analyzer, this.keywordAnalyzer, this.standardAnalyzer);
+		IOUtils.close(this.closeables);
 	}
 
 	private static <K, V> void addAll(final Iterable<K> keys, final V value, final Map<K, V> map) {

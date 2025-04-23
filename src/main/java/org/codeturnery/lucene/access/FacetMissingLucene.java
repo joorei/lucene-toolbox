@@ -18,6 +18,8 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.tests.search.CheckHits;
 
 /**
+ * FIXME
+ * 
  * @see <a href="https://stackoverflow.com/q/53374492/2663985">How to implement Solr's facet.missing=true with Lucene</a>
  */
 public class FacetMissingLucene {

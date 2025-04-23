@@ -8,6 +8,8 @@ import org.apache.lucene.search.IndexSearcher;
 
 public interface ReadExecuter {
 	public <R> R read(final ReadFunction<R> function) throws IOException;
+	
+	public int readInt(final ReadIntFunction function) throws IOException;
 
 	/**
 	 * Instances of this function are provided with the necessary parameters to
@@ -18,5 +20,10 @@ public interface ReadExecuter {
 	@FunctionalInterface
 	interface ReadFunction<R> {
 		R apply(final IndexSearcher searcher, final TaxonomyReader taxonomyReader, final FacetsConfig config) throws IOException;
+	}
+	
+	@FunctionalInterface
+	interface ReadIntFunction {
+		int apply(final IndexSearcher searcher, final TaxonomyReader taxonomyReader, final FacetsConfig config) throws IOException;
 	}
 }

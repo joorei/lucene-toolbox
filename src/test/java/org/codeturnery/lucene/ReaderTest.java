@@ -4,8 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.Arrays;
 
+import org.apache.lucene.facet.FacetsCollectorManager;
 import org.apache.lucene.facet.LabelAndValue;
 import org.apache.lucene.search.MatchAllDocsQuery;
 import org.codeturnery.lucene.access.ReadExecuter;
@@ -20,9 +20,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestInstance.Lifecycle;
 import org.junit.jupiter.api.io.TempDir;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @TestInstance(Lifecycle.PER_CLASS)
 public class ReaderTest {
+	private static final Logger LOGGER = LoggerFactory.getLogger(ReaderTest.class);
+	private static final FacetsCollectorManager FACETS_COLLECTOR_MANAGER = new FacetsCollectorManager();
+	
 	@TempDir
 	static Path sharedTempDir;
 
@@ -38,8 +43,9 @@ public class ReaderTest {
 		try (final var analyzerSupplier = TestIndex.getAnalyzerSupplier();
 				final var luceneIndex = this.testIndex.getIndexManager();) {
 			final ReadExecuter readExecuter = luceneIndex.getReadExecuter();
-			final var reader = new ReadToolbox(readExecuter);
+			final var reader = new ReadToolbox(readExecuter, FACETS_COLLECTOR_MANAGER);
 			final var queryFactory = new QueryFactory();
+			LOGGER.info("Loading count A...");
 			final Integer missingCategoryCount = reader.loadCount(queryFactory.createMissingQuery(
 				new MatchAllDocsQuery(),
 				TestIndex.USED_FIELDS_DIMENSION,
@@ -47,6 +53,7 @@ public class ReaderTest {
 			));
 			// only one document has no categories set
 			assertEquals(2, missingCategoryCount.intValue());
+			LOGGER.info("Loading count B...");
 			final Integer missingNameCount = reader.loadCount(queryFactory.createMissingQuery(
 					new MatchAllDocsQuery(),
 					TestIndex.USED_FIELDS_DIMENSION,
@@ -54,6 +61,7 @@ public class ReaderTest {
 			));
 			// all documents have their name set
 			assertEquals(0, missingNameCount.intValue());
+			LOGGER.info("Loading count C...");
 			final Integer missingFieldsCount = reader.loadCount(queryFactory.createMissingQuery(
 					new MatchAllDocsQuery(),
 					TestIndex.USED_FIELDS_DIMENSION,
@@ -70,7 +78,7 @@ public class ReaderTest {
 		try (final var analyzerSupplier = TestIndex.getAnalyzerSupplier();
 				final var luceneIndex = this.testIndex.getIndexManager();) {
 			final ReadExecuter readExecuter = luceneIndex.getReadExecuter();
-			final var reader = new ReadToolbox(readExecuter);
+			final var reader = new ReadToolbox(readExecuter, FACETS_COLLECTOR_MANAGER);
 			final var navigationFetcher = new NavigationFetcher(reader, TestIndex.USED_FIELDS_DIMENSION);
 			final var queryFactory = new QueryFactory();
 			final var baseQuery = queryFactory.createMatchAllQuery();

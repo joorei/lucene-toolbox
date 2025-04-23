@@ -12,6 +12,8 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.facet.FacetResult;
 import org.apache.lucene.facet.Facets;
 import org.apache.lucene.facet.FacetsCollector;
+import org.apache.lucene.facet.FacetsCollectorManager;
+import org.apache.lucene.facet.FacetsCollectorManager.FacetsResult;
 import org.apache.lucene.facet.taxonomy.FacetLabel;
 import org.apache.lucene.facet.taxonomy.FastTaxonomyFacetCounts;
 import org.apache.lucene.facet.taxonomy.ParallelTaxonomyArrays.IntArray;
@@ -28,45 +30,56 @@ import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.TermRangeQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.TopFieldDocs;
-import org.apache.lucene.search.TotalHitCountCollector;
 import org.apache.lucene.tests.search.CheckHits;
 import org.apache.lucene.util.BytesRef;
 import org.codeturnery.lucene.query.QueryFactory;
+import org.codeturnery.typesystem.Optionals;
 import org.eclipse.jdt.annotation.Checks;
 import org.eclipse.jdt.annotation.Nullable;
 
 public class ReadToolbox {
-	private final ReadExecuter manager;
+	private final FacetsCollectorManager facetsCollectorManager;
+	private final ReadExecuter readExecuter;
 
-	public ReadToolbox(final ReadExecuter luceneIndex) {
-		this.manager = luceneIndex;
+	public ReadToolbox(final ReadExecuter readExecuter, final FacetsCollectorManager facetsCollectorManager) {
+		this.facetsCollectorManager = facetsCollectorManager;
+		this.readExecuter = readExecuter;
 	}
 
-	public <R extends ReadResponse> void loadDocuments(final ReadRequest request, final R receiver) throws IOException {
+	public void loadDocuments(final ReadRequest request, final ReadResponse receiver) throws IOException {
 		Checks.requireNonNull(request);
 		final @Nullable ScoreDoc afterDocument = request.getAfterDocument().orElse(null);
 		final boolean scoreInclusion = request.getScoreInclusion();
 		final Query query = Checks.requireNonNull(request.getQuery());
 		final int maxHitCount = request.getMaxHitCount();
-		final Sort sort = Sort.RELEVANCE;
+		final Sort sort = request.getSort();
 
-		this.manager.read((searcher, taxonomyReader, config) -> {
+		this.readExecuter.read((searcher, taxonomyReader, config) -> {
 			Checks.requireNonNull(searcher);
 
-			final TopFieldDocs topDocs = searcher.searchAfter(afterDocument, query, maxHitCount, sort, scoreInclusion);
+			final TopFieldDocs topDocs = Checks
+					.requireNonNull(searcher.searchAfter(afterDocument, query, maxHitCount, sort, scoreInclusion));
 			fillReceiverWithHits(searcher, topDocs, request, receiver);
 			return receiver;
 		});
 	}
 
-	public <R extends ReadResponse> void loadDocumentsAndFacets(final ReadRequest request, final R receiver)
-			throws IOException {
-		this.manager.read((searcher, taxonomyReader, config) -> {
-			final FacetsCollector facetsCollector = new FacetsCollector();
-			final TopDocs topDocs = FacetsCollector.searchAfter(searcher, request.getAfterDocument().orElse(null),
-					request.getQuery(), request.getMaxHitCount(), Sort.RELEVANCE, request.getScoreInclusion(),
-					facetsCollector);
-			final Facets facets = new FastTaxonomyFacetCounts(taxonomyReader, config, facetsCollector);
+	public void loadDocumentsAndFacets(final ReadRequest request, final ReadResponse receiver) throws IOException {
+		this.readExecuter.read((searcher, taxonomyReader, config) -> {
+			final int maxHitCount = request.getMaxHitCount();
+			final Query query = request.getQuery();
+			final boolean scoreInclusion = request.getScoreInclusion();
+			final Sort sort = request.getSort();
+			final @Nullable ScoreDoc afterDocument = request.getAfterDocument().orElse(null);
+			// We can't just use searcher.searchAfter, as this alone does not support
+			// facets.
+			// If sort is non-null, afterDocument must be null or a FieldDoc.
+			// Also, if afterDocument is non-null, afterDocument.doc must be smaller than
+			// searcher.getIndexReader().maxDoc().
+			final FacetsResult result = FacetsCollectorManager.searchAfter(searcher, afterDocument, query, maxHitCount,
+					sort, scoreInclusion, this.facetsCollectorManager);
+			final TopDocs topDocs = Checks.requireNonNull(result.topDocs());
+			final var facets = new FastTaxonomyFacetCounts(taxonomyReader, config, result.facetsCollector());
 
 			receiver.setFacets(facets);
 			fillReceiverWithHits(searcher, topDocs, request, receiver);
@@ -76,27 +89,16 @@ public class ReadToolbox {
 	}
 
 	public Facets loadFacets(final Query query) throws IOException {
-		return this.manager.read((searcher, taxonomyReader, config) -> {
-			// using the default for now, can be made a method parameter if score values are
-			// actually needed
-			final boolean keepScores = false;
-			final FacetsCollector facetsCollector = new FacetsCollector(keepScores);
-			searcher.search(query, facetsCollector);
-
+		return this.readExecuter.read((searcher, taxonomyReader, config) -> {
+			final FacetsCollector facetsCollector = searcher.search(query, this.facetsCollectorManager);
 			return new FastTaxonomyFacetCounts(taxonomyReader, config, facetsCollector);
 		});
 	}
 
-	public Integer loadCount(final Query query) throws IOException {
-		return this.manager.read((searcher, taxonomyReader, config) -> {
-			final var collector = new TotalHitCountCollector();
-			searcher.search(query, collector);
-			final int totalHits = collector.getTotalHits();
-
-			return Integer.valueOf(totalHits);
-		});
+	public int loadCount(final Query query) throws IOException {
+		return this.readExecuter.readInt((searcher, taxonomyReader, config) -> searcher.count(query));
 	}
-	
+
 	/**
 	 * Collects the number documents, that do not have a specific field set, for an
 	 * array of fields.
@@ -116,6 +118,11 @@ public class ReadToolbox {
 	 * TODO: expand on this principle to implement methods (performantly) loading
 	 * actual documents and facets TODO: is there an advantage in making the
 	 * {@link TermRangeQuery} adjustable (i.e. a parameter)?
+	 * 
+	 * @param query
+	 * @param fields the fields that must not be present in the documents to count
+	 * @return
+	 * @throws IOException
 	 */
 	public int[] loadMissingCount(final Query query, final List<String> fields) throws IOException {
 		final int fieldsSize = fields.size();
@@ -123,44 +130,46 @@ public class ReadToolbox {
 		if (fieldsSize == 0) {
 			return results;
 		}
-		
-		return this.manager.read((searcher, taxonomyReader, config) -> {
+
+		return this.readExecuter.read((searcher, taxonomyReader, config) -> {
 			// first search limits result to given query
 			final var queryResBase = new HashSet<Integer>();
-			searcher.search(query, new CheckHits.SetCollector(queryResBase));
-			
+			final var setCollector = new CheckHits.SetCollector(queryResBase);
+			searcher.search(query, setCollector);
+
 			// shortcut in case if there are no results anyway
 			if (queryResBase.isEmpty()) {
 				Arrays.fill(results, 0);
 				return results;
 			}
-			
+
 			// if there are results we calculate which of them are missing the given fields
 			for (int i = 0; i < fieldsSize; i++) {
-				// second search gets all documents missing the given field, independent from the original query
+				// second search gets all documents missing the given field, independent from
+				// the original query
 				final Set<Integer> missingRes = new HashSet<>();
-				searcher.search(
-						new TermRangeQuery(fields.get(i), null, null, false, false),
-						new CheckHits.SetCollector(missingRes));
-				
+				final var setCollectorMissing = new CheckHits.SetCollector(missingRes);
+				final var termRangeQuery = new TermRangeQuery(fields.get(i), null, null, false, false);
+				searcher.search(termRangeQuery, setCollectorMissing);
+
 				// compute the intersection of both results and get the resulting count
 				final var queryRes = new HashSet<>(queryResBase);
 				queryRes.removeAll(missingRes);
 				results[i] = queryRes.size();
 			}
-			
+
 			return results;
 		});
 	}
 
 	public Set<String> getExistingValues(final String field) throws IOException {
-		return this.manager.read((searcher, taxonomyReader, config) -> {
+		return this.readExecuter.read((searcher, taxonomyReader, config) -> {
 			final Set<String> termStrings = new LinkedHashSet<>();
 			for (final LeafReaderContext leafReaderContext : searcher.getIndexReader().leaves()) {
 				final Terms terms = leafReaderContext.reader().terms(field);
 				final TermsEnum termsEnum = terms.iterator();
 				for (BytesRef term = termsEnum.term(); term != null; term = termsEnum.next()) {
-					final String termString = term.utf8ToString();
+					final String termString = Checks.requireNonNull(term.utf8ToString());
 					termStrings.add(termString);
 				}
 			}
@@ -173,7 +182,7 @@ public class ReadToolbox {
 	 * @throws IOException
 	 */
 	public Collection<String> getIndexedFields() throws IOException {
-		return this.manager
+		return this.readExecuter
 				.read((searcher, taxonomyReader, config) -> FieldInfos.getIndexedFields(searcher.getIndexReader()));
 	}
 
@@ -213,7 +222,7 @@ public class ReadToolbox {
 	public Optional<FacetResult> getFacetResult(final Query query, final String dimension, final int topN)
 			throws IOException {
 		final Facets facets = loadFacets(query);
-		return Optional.ofNullable(facets.getTopChildren(topN, dimension));
+		return Optionals.ofNullable(facets.getTopChildren(topN, dimension));
 	}
 
 	/**
@@ -221,7 +230,7 @@ public class ReadToolbox {
 	 * @throws IOException
 	 */
 	public int getDocumentCount() throws IOException {
-		return this.manager
+		return this.readExecuter
 				.read((searcher, taxonomyReader, config) -> Integer.valueOf(searcher.getIndexReader().numDocs()))
 				.intValue();
 	}
@@ -241,7 +250,9 @@ public class ReadToolbox {
 	 * @throws IOException
 	 */
 	public int getFlattenedTaxonomyMetaCount() throws IOException {
-		return this.manager.read((s, tr, fc) -> Integer.valueOf(tr.getSize())).intValue();
+		final Integer result = this.readExecuter
+				.read((s, taxonomyReader, fc) -> Integer.valueOf(taxonomyReader.getSize()));
+		return result.intValue();
 	}
 
 	/**
@@ -249,8 +260,8 @@ public class ReadToolbox {
 	 * @throws IOException
 	 */
 	public IntArray getTaxonomyChildren() throws IOException {
-		return this.manager.read((s, tr, fc) -> {
-			return tr.getParallelTaxonomyArrays().children();
+		return this.readExecuter.read((s, taxonomyReader, fc) -> {
+			return taxonomyReader.getParallelTaxonomyArrays().children();
 		});
 	}
 
@@ -259,26 +270,26 @@ public class ReadToolbox {
 	 * @throws IOException
 	 */
 	public FacetLabel[] getFacetLabels() throws IOException {
-		return this.manager.read((s, tr, fc) -> {
-			final IntArray children = tr.getParallelTaxonomyArrays().children();
+		return this.readExecuter.read((s, taxonomyReader, fc) -> {
+			final IntArray children = taxonomyReader.getParallelTaxonomyArrays().children();
 			final int childrenCount = children.length();
 			final var result = new FacetLabel[childrenCount];
 			for (int i = 0; i < childrenCount; i++) {
-				result[i] = tr.getPath(i);
+				result[i] = taxonomyReader.getPath(i);
 			}
 			return result;
 		});
 	}
 
 	public IntArray getTaxonomyParents() throws IOException {
-		return this.manager.read((s, tr, fc) -> {
-			return tr.getParallelTaxonomyArrays().parents();
+		return this.readExecuter.read((s, taxonomyReader, fc) -> {
+			return taxonomyReader.getParallelTaxonomyArrays().parents();
 		});
 	}
 
 	public IntArray getTaxonomySiblings() throws IOException {
-		return this.manager.read((s, tr, fc) -> {
-			return tr.getParallelTaxonomyArrays().siblings();
+		return this.readExecuter.read((s, taxonomyReader, fc) -> {
+			return taxonomyReader.getParallelTaxonomyArrays().siblings();
 		});
 	}
 

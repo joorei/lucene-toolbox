@@ -8,6 +8,7 @@ import org.apache.lucene.facet.Facets;
 import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.Sort;
 
 @SuppressWarnings({ "javadoc" })
 public interface ReadRequest {
@@ -66,8 +67,16 @@ public interface ReadRequest {
 
 	/**
 	 * The maximum number of results to request from the index.
+	 * <p>
+	 * I.e. a query will attempt to find this many documents and the result of the
+	 * search is set via {@link ReadResponse#setHits}. However, how many of the
+	 * found documents are actually loaded and set via
+	 * {@link ReadResponse#addDocument} depends on the {@link #getMaxDocumentCount}
+	 * value.
 	 * 
-	 * @return
+	 * @return the number of documents to search for
 	 */
 	public int getMaxHitCount();
+
+	public Sort getSort();
 }

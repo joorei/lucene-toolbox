@@ -6,6 +6,7 @@ import java.util.Set;
 
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.Sort;
 import org.eclipse.jdt.annotation.Checks;
 import org.eclipse.jdt.annotation.Nullable;
 
@@ -85,4 +86,8 @@ public class PojoReadRequest implements ReadRequest {
 		return this.scoreInclusion;
 	}
 
+	@Override
+	public Sort getSort() {
+		return Sort.RELEVANCE;
+	}
 }

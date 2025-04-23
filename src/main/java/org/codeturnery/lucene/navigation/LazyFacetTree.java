@@ -85,6 +85,7 @@ public class LazyFacetTree {
 	 * @param baseQuerySupplier The value to set in {@link #baseQuerySupplier}.
 	 * @param queryFactory      The value to set in {@link #queryFactory}.
 	 * @param facetsConfig      The value to set in {@link #facetsConfig}.
+	 * @param usedFieldsField
 	 */
 	public LazyFacetTree(final Supplier<Query> baseQuerySupplier,
 			final QueryFactory queryFactory, final FacetsConfig facetsConfig, final String usedFieldsField) {

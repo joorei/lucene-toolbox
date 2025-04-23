@@ -5,10 +5,10 @@ import java.util.Optional;
 
 import org.apache.lucene.facet.FacetResult;
 
-import org.codeturnery.annotations.NonNegative;
 import org.codeturnery.lucene.access.ReadToolbox;
 import org.codeturnery.lucene.navigation.LazyFacetTree.LazyFacetTreeItem;
 import org.codeturnery.lucene.query.QueryFactory;
+import org.codeturnery.typesystem.NonNegative;
 
 public class NavigationFetcher {
 

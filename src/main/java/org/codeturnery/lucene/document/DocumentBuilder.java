@@ -1,124 +1,77 @@
 package org.codeturnery.lucene.document;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.IndexableField;
-import org.apache.lucene.index.IndexableFieldType;
 
 /**
  * Helps to fill a {@link Document} to index it into Lucene.
- * <p>
- * You can extend this class with your own domain-specific class, implementing
- * public setters to add specific fields. Instances of that class can then be
- * passed into trusted third party-code, which is restricted to the public
- * setters and not allowed low-level access to the backing {@link Document}
- * directly.
  */
-@SuppressWarnings({ "javadoc" })
-public class AbstractDocumentBuilder {
+public class DocumentBuilder {
 	protected final Document document;
-	protected final FieldFactory fieldFactory;
 
-	protected AbstractDocumentBuilder(final FieldFactory fieldFactory) {
+	public DocumentBuilder() {
 		this.document = new Document();
-		this.fieldFactory = fieldFactory;
 	}
 
 	/**
-	 * @param field
-	 * @param inputStream     Will be closed by this method after reading.
-	 * @param inputStreamSize
-	 * @throws IOException
-	 */
-	protected void addStoredBytes(final String field, final InputStream inputStream, final int inputStreamSize)
-			throws IOException {
-		this.document.add(this.fieldFactory.createStoredBytes(field, inputStream, inputStreamSize));
-	}
-
-	/**
+	 * Add all fields in the given array to the {@link #document backing document}.
+	 * <p>
+	 * You may create fields using {@link FieldFactory} or other means.
 	 * 
-	 * @param field
-	 * @param bytes  Changes made to the arrays content <strong>will</strong> be
-	 *               reflected in the written {@link Document} field until indexing
-	 *               has been completed.
-	 * @param offset
-	 * @param length
+	 * @param fields
 	 */
-	public void addStoredBytes(final String field, final byte[] bytes, int offset, int length) {
-		this.document.add(this.fieldFactory.createStoredBytes(field, bytes, offset, length));
-	}
-
-	/**
-	 * @param field
-	 * @param value
-	 */
-	public void addStoredInt(final String field, final int value) {
-		this.document.add(this.fieldFactory.createStoredInt(field, value));
-	}
-
-	/**
-	 * @param field
-	 * @param value
-	 */
-	public void addIndexedInt(final String field, final int value) {
-		this.document.add(this.fieldFactory.createIndexedInt(field, value));
-	}
-
-	/**
-	 * @param field
-	 * @param value
-	 */
-	protected void addStoredLong(final String field, final long value) {
-		this.document.add(this.fieldFactory.createStoredLong(field, value));
-	}
-
-	/**
-	 * @param field
-	 * @param value
-	 */
-	protected void addIndexedLong(final String field, final long value) {
-		this.document.add(this.fieldFactory.createIndexedLong(field, value));
-	}
-
-	/**
-	 * @param field
-	 * @param value
-	 */
-	protected void addIndexedAndStoredBoolean(final String field, final boolean value) {
-		this.document.add(this.fieldFactory.createString(field, value));
-	}
-
-	/**
-	 * 
-	 * @param field
-	 * @param value
-	 * @param fieldType Describes how the value should be stored. You may refer to
-	 *                  predefined instances like {@link StringField#TYPE_STORED}.
-	 * @param taxomize
-	 */
-	public void addString(final String field, final CharSequence value, final IndexableFieldType fieldType,
-			final boolean taxomize) {
-		final IndexableField[] fields = this.fieldFactory.createString(field, value, fieldType, taxomize);
+	public void addAll(final IndexableField[] fields) {
 		for (int i = 0; i < fields.length; i++) {
-			this.document.add(fields[i]);
+			add(fields[i]);
+		}
+	}
+
+	public void addAll(final Iterable<IndexableField> fields) {
+		for (final IndexableField field : fields) {
+			add(field);
 		}
 	}
 
 	/**
-	 * @param field
-	 * @param values
-	 * @param fieldType
-	 * @param taxomize
+	 * Use this method to get all field names currently in use in the build
+	 * document.
+	 * <p>
+	 * You may create new fields from the result and add them back to this builder,
+	 * to support "missing fields" searches.
+	 * <p>
+	 * Collecting all field names from the document before adding fields is
+	 * necessary, as the fields in the document can not be changed while iterating
+	 * over them.
+	 * 
+	 * @return The current field names in the build document without duplicates.
+	 *         Decoupled from the document, i.e. will not change when the document
+	 *         changes.
 	 */
-	protected void addStrings(final String field, final Collection<CharSequence> values,
-			final IndexableFieldType fieldType, final boolean taxomize) {
-		final IndexableField[] fields = this.fieldFactory.createStrings(field, values, fieldType, taxomize);
-		for (int i = 0; i < fields.length; i++) {
-			this.document.add(fields[i]);
+	public Set<String> getFieldNamesInUse() {
+		final List<IndexableField> fieldsInUse = this.document.getFields();
+		final Set<String> fieldNamesInUse = new HashSet<>(fieldsInUse.size());
+		for (final IndexableField fieldInUse : fieldsInUse) {
+			fieldNamesInUse.add(fieldInUse.name());
 		}
+		return fieldNamesInUse;
+	}
+
+	/**
+	 * Add the given field to the {@link #document backing document}.
+	 * <p>
+	 * You may create fields using {@link FieldFactory} or other means.
+	 * 
+	 * @param field
+	 */
+	public void add(final IndexableField field) {
+		this.document.add(field);
+	}
+
+	public Document getDocument() {
+		return this.document;
 	}
 }
