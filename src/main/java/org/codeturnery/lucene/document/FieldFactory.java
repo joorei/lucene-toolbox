@@ -45,7 +45,10 @@ public class FieldFactory {
 			throws IOException {
 		try (inputStream) {
 			final var bytes = new byte[inputStreamSize];
-			BytesUtil.readInto(inputStream, bytes);
+			final int count = BytesUtil.readInto(inputStream, bytes, 0, inputStreamSize, null);
+			if (count != inputStreamSize) {
+				throw new IllegalStateException("Expected size (" + inputStreamSize + ") does not equal actually read bytes (" + count + ").");
+			}
 			return new StoredField(field, bytes, 0, inputStreamSize);
 		}
 	}
